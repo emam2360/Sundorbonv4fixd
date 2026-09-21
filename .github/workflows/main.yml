@@ -70,22 +70,204 @@ jobs:
 
 
       # --------------------------------------------------
-      # 8. Add Android platform
+      # 8. ADD ONLY: Money Edit Function
+      # --------------------------------------------------
+      - name: Add Money Edit Function
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path("script1.js")
+          text = path.read_text(encoding="utf-8")
+
+          marker = "/* SDH_MONEY_EDIT_V1 */"
+
+          if marker in text:
+              print("Money Edit patch already exists.")
+              raise SystemExit(0)
+
+          patch = r'''
+          /* SDH_MONEY_EDIT_V1 */
+
+          function sdhEditLatestSale(id){
+              const s = db.shops.find(x => x.id === id);
+              if(!s){
+                  toast('দোকান পাওয়া যায়নি');
+                  return;
+              }
+
+              s.sales = Array.isArray(s.sales) ? s.sales : [];
+
+              if(!s.sales.length){
+                  toast('এই দোকানের কোনো টাকা হিসাব নেই');
+                  return;
+              }
+
+              const list = s.sales.slice().sort((a,b) => {
+                  const da = String(a.date || '');
+                  const dbb = String(b.date || '');
+
+                  if(da !== dbb){
+                      return dbb.localeCompare(da);
+                  }
+
+                  return Number(b.id || 0) - Number(a.id || 0);
+              });
+
+              const sale = list[0];
+
+              const oldAmount = Number(sale.amount || 0);
+
+              const sheet = document.getElementById('sheet');
+
+              if(!sheet){
+                  alert('Edit window পাওয়া যায়নি।');
+                  return;
+              }
+
+              sheet.innerHTML = `
+                  <div class="card">
+                      <h3>💰 টাকা Edit করুন</h3>
+
+                      <div class="muted" style="margin-bottom:10px">
+                          দোকান: ${esc(s.name || '')}
+                      </div>
+
+                      <div class="muted" style="margin-bottom:10px">
+                          তারিখ: ${esc(sale.date || '')}
+                      </div>
+
+                      <label>বর্তমান টাকা</label>
+
+                      <input
+                          id="sdhEditSaleAmount"
+                          type="number"
+                          min="0"
+                          inputmode="decimal"
+                          value="${oldAmount}"
+                          style="width:100%;box-sizing:border-box"
+                      >
+
+                      <div
+                          class="actions"
+                          style="margin-top:14px"
+                      >
+
+                          <button
+                              class="btn"
+                              onclick="sdhSaveEditedSale(${id}, ${JSON.stringify(String(sale.id))})"
+                          >
+                              💾 Save
+                          </button>
+
+                          <button
+                              class="btn secondary"
+                              onclick="showShop(${id})"
+                          >
+                              বাতিল
+                          </button>
+
+                      </div>
+                  </div>
+              `;
+
+              if(typeof openModal === 'function'){
+                  try{
+                      openModal('edit-sale', id);
+                  }catch(e){}
+              }
+
+              setTimeout(() => {
+                  const input =
+                      document.getElementById('sdhEditSaleAmount');
+
+                  if(input){
+                      input.focus();
+                      input.select();
+                  }
+              }, 100);
+          }
+
+
+          function sdhSaveEditedSale(id, saleId){
+              const s = db.shops.find(x => x.id === id);
+
+              if(!s){
+                  toast('দোকান পাওয়া যায়নি');
+                  return;
+              }
+
+              s.sales = Array.isArray(s.sales) ? s.sales : [];
+
+              const sale = s.sales.find(
+                  x => String(x.id) === String(saleId)
+              );
+
+              if(!sale){
+                  toast('হিসাবটি পাওয়া যায়নি');
+                  return;
+              }
+
+              const input =
+                  document.getElementById('sdhEditSaleAmount');
+
+              const newAmount =
+                  Number(input?.value || 0);
+
+              if(!Number.isFinite(newAmount) || newAmount < 0){
+                  toast('সঠিক টাকার পরিমাণ দিন');
+                  return;
+              }
+
+              sale.amount = newAmount;
+
+              save();
+
+              if(typeof render === 'function'){
+                  render();
+              }
+
+              if(typeof showShop === 'function'){
+                  showShop(id);
+              }
+
+              toast('টাকার হিসাব সফলভাবে Edit হয়েছে');
+          }
+
+
+          window.editLatestSale = sdhEditLatestSale;
+          window.sdhEditLatestSale = sdhEditLatestSale;
+          window.sdhSaveEditedSale = sdhSaveEditedSale;
+
+          '''
+
+          if "})();" not in text:
+              raise SystemExit("ERROR: script1.js ending marker not found")
+
+          text = text.rsplit("})();", 1)[0] + patch + "\n})();\n"
+
+          path.write_text(text, encoding="utf-8")
+
+          print("Money Edit function added successfully.")
+          PY
+
+
+      # --------------------------------------------------
+      # 9. Add Android platform
       # --------------------------------------------------
       - name: Add Android platform
         run: npx cap add android
 
 
       # --------------------------------------------------
-      # 9. Sync Capacitor
+      # 10. Sync Capacitor
       # --------------------------------------------------
       - name: Sync Capacitor
         run: npx cap sync android
 
 
       # --------------------------------------------------
-      # 10. Configure correct Android MainActivity
-      #     Correct package from capacitor.config.ts
+      # 11. Configure correct Android MainActivity
       # --------------------------------------------------
       - name: Configure Android MainActivity
         run: |
@@ -101,7 +283,6 @@ jobs:
           import android.net.Uri;
           import android.os.Bundle;
           import android.webkit.JavascriptInterface;
-          import android.webkit.WebView;
 
           import androidx.activity.OnBackPressedCallback;
 
@@ -187,202 +368,4 @@ jobs:
                           intent.addFlags(
                               Intent.FLAG_GRANT_READ_URI_PERMISSION |
                               Intent.FLAG_GRANT_WRITE_URI_PERMISSION |
-                              Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION |
-                              Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
-                          );
-
-                          activity.startActivityForResult(
-                              intent,
-                              BACKUP_FOLDER_REQUEST
-                          );
-                      });
-                  }
-
-                  @JavascriptInterface
-                  public void saveBackup(String json, String fileName) {
-
-                      activity.runOnUiThread(() -> {
-
-                          try {
-
-                              android.content.SharedPreferences prefs =
-                                  activity.getSharedPreferences(
-                                      "sdh_backup",
-                                      Context.MODE_PRIVATE
-                                  );
-
-                              String uriString =
-                                  prefs.getString(
-                                      "folder_uri",
-                                      null
-                                  );
-
-                              if (uriString == null) {
-                                  return;
-                              }
-
-                              Uri folderUri =
-                                  Uri.parse(uriString);
-
-                              android.content.ContentResolver resolver =
-                                  activity.getContentResolver();
-
-                              Uri fileUri =
-                                  android.provider.DocumentsContract
-                                      .createDocument(
-                                          resolver,
-                                          folderUri,
-                                          "application/json",
-                                          fileName
-                                      );
-
-                              if (fileUri == null) {
-                                  return;
-                              }
-
-                              OutputStream output =
-                                  resolver.openOutputStream(fileUri);
-
-                              if (output == null) {
-                                  return;
-                              }
-
-                              output.write(
-                                  json.getBytes(
-                                      java.nio.charset.StandardCharsets.UTF_8
-                                  )
-                              );
-
-                              output.flush();
-                              output.close();
-
-                          } catch (Exception ignored) {
-                          }
-                      });
-                  }
-              }
-
-              @Override
-              protected void onActivityResult(
-                  int requestCode,
-                  int resultCode,
-                  Intent data
-              ) {
-
-                  super.onActivityResult(
-                      requestCode,
-                      resultCode,
-                      data
-                  );
-
-                  if (requestCode != BACKUP_FOLDER_REQUEST ||
-                      resultCode != RESULT_OK ||
-                      data == null ||
-                      data.getData() == null) {
-                      return;
-                  }
-
-                  Uri uri = data.getData();
-
-                  try {
-
-                      getContentResolver().takePersistableUriPermission(
-                          uri,
-                          Intent.FLAG_GRANT_READ_URI_PERMISSION |
-                          Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                      );
-
-                      getSharedPreferences(
-                          "sdh_backup",
-                          Context.MODE_PRIVATE
-                      )
-                      .edit()
-                      .putString(
-                          "folder_uri",
-                          uri.toString()
-                      )
-                      .apply();
-
-                      String folderName = uri.getPath();
-
-                      if (getBridge() != null &&
-                          getBridge().getWebView() != null) {
-
-                          String safeName =
-                              folderName == null
-                              ? "নির্বাচিত Folder"
-                              : folderName
-                                  .replace("\\", "\\\\")
-                                  .replace("'", "\\'");
-
-                          getBridge().getWebView()
-                              .post(() -> {
-
-                                  getBridge()
-                                      .getWebView()
-                                      .evaluateJavascript(
-                                          "if(typeof window.onNativeBackupFolderSelected==='function')" +
-                                          "{window.onNativeBackupFolderSelected('" +
-                                          safeName +
-                                          "');}",
-                                          null
-                                      );
-                              });
-                      }
-
-                  } catch (Exception ignored) {
-                  }
-              }
-          }
-          EOF
-
-
-      # --------------------------------------------------
-      # 11. Sync again after native changes
-      # --------------------------------------------------
-      - name: Sync Capacitor after native configuration
-        run: npx cap sync android
-
-
-      # --------------------------------------------------
-      # 12. Make Gradle executable
-      # --------------------------------------------------
-      - name: Make Gradle executable
-        run: chmod +x android/gradlew
-
-
-      # --------------------------------------------------
-      # 13. Build APK
-      # --------------------------------------------------
-      - name: Build Debug APK
-        working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
-
-
-      # --------------------------------------------------
-      # 14. Verify APK exists
-      # --------------------------------------------------
-      - name: Verify APK
-        run: |
-
-          test -f android/app/build/outputs/apk/debug/app-debug.apk
-
-          echo "APK successfully created."
-
-          ls -lh \
-            android/app/build/outputs/apk/debug/app-debug.apk
-
-
-      # --------------------------------------------------
-      # 15. Upload APK
-      # --------------------------------------------------
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-
-        with:
-          name: Sundarban-Drug-House-APK
-
-          path:
-            android/app/build/outputs/apk/debug/app-debug.apk
-
-          if-no-files-found: error
+                              Intent.FLAG_GR
