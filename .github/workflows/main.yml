@@ -48,7 +48,179 @@ jobs:
       # 5. TypeScript
       # --------------------------------------------------
       - name: Install TypeScript
-        run: npm install -D typescript
+        run: - name: Add Money Edit Function
+  run: |
+    python3 <<'PY'
+    from pathlib import Path
+
+    path = Path("script1.js")
+    text = path.read_text(encoding="utf-8")
+
+    marker = "/* SDH_MONEY_EDIT_V1 */"
+
+    if marker in text:
+        print("Money Edit patch already exists.")
+        raise SystemExit(0)
+
+    patch = r'''
+/* SDH_MONEY_EDIT_V1 */
+
+function sdhEditLatestSale(id){
+    const s = db.shops.find(x => x.id === id);
+
+    if(!s){
+        toast('দোকান পাওয়া যায়নি');
+        return;
+    }
+
+    s.sales = Array.isArray(s.sales) ? s.sales : [];
+
+    if(!s.sales.length){
+        toast('এই দোকানের কোনো টাকা হিসাব নেই');
+        return;
+    }
+
+    const list = s.sales.slice().sort((a,b) => {
+        const da = String(a.date || '');
+        const dbb = String(b.date || '');
+
+        if(da !== dbb){
+            return dbb.localeCompare(da);
+        }
+
+        return Number(b.id || 0) - Number(a.id || 0);
+    });
+
+    const sale = list[0];
+    const oldAmount = Number(sale.amount || 0);
+
+    const sheet = document.getElementById('sheet');
+
+    if(!sheet){
+        alert('Edit window পাওয়া যায়নি।');
+        return;
+    }
+
+    sheet.innerHTML = `
+        <div class="card">
+            <h3>💰 টাকা Edit করুন</h3>
+
+            <div class="muted" style="margin-bottom:10px">
+                দোকান: ${esc(s.name || '')}
+            </div>
+
+            <div class="muted" style="margin-bottom:10px">
+                তারিখ: ${esc(sale.date || '')}
+            </div>
+
+            <label>বর্তমান টাকা</label>
+
+            <input
+                id="sdhEditSaleAmount"
+                type="number"
+                min="0"
+                inputmode="decimal"
+                value="${oldAmount}"
+                style="width:100%;box-sizing:border-box"
+            >
+
+            <div class="actions" style="margin-top:14px">
+
+                <button
+                    class="btn"
+                    onclick="sdhSaveEditedSale(${id}, ${JSON.stringify(String(sale.id))})"
+                >
+                    💾 Save
+                </button>
+
+                <button
+                    class="btn secondary"
+                    onclick="showShop(${id})"
+                >
+                    বাতিল
+                </button>
+
+            </div>
+        </div>
+    `;
+
+    if(typeof openModal === 'function'){
+        try{
+            openModal('edit-sale', id);
+        }catch(e){}
+    }
+
+    setTimeout(() => {
+        const input =
+            document.getElementById('sdhEditSaleAmount');
+
+        if(input){
+            input.focus();
+            input.select();
+        }
+    }, 100);
+}
+
+function sdhSaveEditedSale(id, saleId){
+
+    const s = db.shops.find(x => x.id === id);
+
+    if(!s){
+        toast('দোকান পাওয়া যায়নি');
+        return;
+    }
+
+    s.sales = Array.isArray(s.sales) ? s.sales : [];
+
+    const sale = s.sales.find(
+        x => String(x.id) === String(saleId)
+    );
+
+    if(!sale){
+        toast('হিসাবটি পাওয়া যায়নি');
+        return;
+    }
+
+    const input =
+        document.getElementById('sdhEditSaleAmount');
+
+    const newAmount =
+        Number(input?.value || 0);
+
+    if(!Number.isFinite(newAmount) || newAmount < 0){
+        toast('সঠিক টাকার পরিমাণ দিন');
+        return;
+    }
+
+    sale.amount = newAmount;
+
+    save();
+
+    if(typeof render === 'function'){
+        render();
+    }
+
+    if(typeof showShop === 'function'){
+        showShop(id);
+    }
+
+    toast('টাকার হিসাব সফলভাবে Edit হয়েছে');
+}
+
+window.editLatestSale = sdhEditLatestSale;
+window.sdhEditLatestSale = sdhEditLatestSale;
+window.sdhSaveEditedSale = sdhSaveEditedSale;
+'''
+
+    if "})();" not in text:
+        raise SystemExit("ERROR: script1.js ending marker not found")
+
+    text = text.rsplit("})();", 1)[0] + patch + "\n})();\n"
+
+    path.write_text(text, encoding="utf-8")
+
+    print("Money Edit function added successfully.")
+    PY
 
       # --------------------------------------------------
       # 6. Install Capacitor Android
