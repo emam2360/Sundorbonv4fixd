@@ -21,7 +21,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-
       # --------------------------------------------------
       # 2. Node.js
       # --------------------------------------------------
@@ -29,7 +28,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
 
       # --------------------------------------------------
       # 3. Java
@@ -40,13 +38,11 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-
       # --------------------------------------------------
       # 4. Install project dependencies
       # --------------------------------------------------
       - name: Install dependencies
         run: npm install
-
 
       # --------------------------------------------------
       # 5. TypeScript
@@ -54,23 +50,15 @@ jobs:
       - name: Install TypeScript
         run: npm install -D typescript
 
-
       # --------------------------------------------------
       # 6. Install Capacitor Android
       # --------------------------------------------------
       - name: Install Capacitor Android
         run: npm install @capacitor/android@8.5.2
 
-
       # --------------------------------------------------
-      # 7. Build web app
-      # --------------------------------------------------
-      - name: Build PWA
-        run: npm run build
-
-
-      # --------------------------------------------------
-      # 8. ADD ONLY: Money Edit Function
+      # 7. ADD ONLY: Money Edit Function
+      # IMPORTANT: must happen BEFORE npm run build
       # --------------------------------------------------
       - name: Add Money Edit Function
         run: |
@@ -90,7 +78,9 @@ jobs:
           /* SDH_MONEY_EDIT_V1 */
 
           function sdhEditLatestSale(id){
+
               const s = db.shops.find(x => x.id === id);
+
               if(!s){
                   toast('দোকান পাওয়া যায়নি');
                   return;
@@ -104,6 +94,7 @@ jobs:
               }
 
               const list = s.sales.slice().sort((a,b) => {
+
                   const da = String(a.date || '');
                   const dbb = String(b.date || '');
 
@@ -127,6 +118,7 @@ jobs:
 
               sheet.innerHTML = `
                   <div class="card">
+
                       <h3>💰 টাকা Edit করুন</h3>
 
                       <div class="muted" style="margin-bottom:10px">
@@ -168,6 +160,7 @@ jobs:
                           </button>
 
                       </div>
+
                   </div>
               `;
 
@@ -178,6 +171,7 @@ jobs:
               }
 
               setTimeout(() => {
+
                   const input =
                       document.getElementById('sdhEditSaleAmount');
 
@@ -185,11 +179,13 @@ jobs:
                       input.focus();
                       input.select();
                   }
+
               }, 100);
           }
 
 
           function sdhSaveEditedSale(id, saleId){
+
               const s = db.shops.find(x => x.id === id);
 
               if(!s){
@@ -238,19 +234,29 @@ jobs:
           window.editLatestSale = sdhEditLatestSale;
           window.sdhEditLatestSale = sdhEditLatestSale;
           window.sdhSaveEditedSale = sdhSaveEditedSale;
-
           '''
 
           if "})();" not in text:
-              raise SystemExit("ERROR: script1.js ending marker not found")
+              raise SystemExit(
+                  "ERROR: script1.js ending marker not found"
+              )
 
-          text = text.rsplit("})();", 1)[0] + patch + "\n})();\n"
+          text = (
+              text.rsplit("})();", 1)[0]
+              + patch
+              + "\n})();\n"
+          )
 
           path.write_text(text, encoding="utf-8")
 
           print("Money Edit function added successfully.")
           PY
 
+      # --------------------------------------------------
+      # 8. Build web app
+      # --------------------------------------------------
+      - name: Build PWA
+        run: npm run build
 
       # --------------------------------------------------
       # 9. Add Android platform
@@ -258,114 +264,6 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
 
-
       # --------------------------------------------------
       # 10. Sync Capacitor
-      # --------------------------------------------------
-      - name: Sync Capacitor
-        run: npx cap sync android
-
-
-      # --------------------------------------------------
-      # 11. Configure correct Android MainActivity
-      # --------------------------------------------------
-      - name: Configure Android MainActivity
-        run: |
-
-          mkdir -p android/app/src/main/java/com/sundarbandraghouse/app
-
-          cat > android/app/src/main/java/com/sundarbandraghouse/app/MainActivity.java <<'EOF'
-          package com.sundarbandraghouse.app;
-
-          import android.app.Activity;
-          import android.content.Context;
-          import android.content.Intent;
-          import android.net.Uri;
-          import android.os.Bundle;
-          import android.webkit.JavascriptInterface;
-
-          import androidx.activity.OnBackPressedCallback;
-
-          import com.getcapacitor.BridgeActivity;
-
-          import java.io.OutputStream;
-
-          public class MainActivity extends BridgeActivity {
-
-              private static final int BACKUP_FOLDER_REQUEST = 9001;
-
-              @Override
-              public void onCreate(Bundle savedInstanceState) {
-                  super.onCreate(savedInstanceState);
-
-                  getOnBackPressedDispatcher().addCallback(
-                      this,
-                      new OnBackPressedCallback(true) {
-
-                          @Override
-                          public void handleOnBackPressed() {
-
-                              if (getBridge() == null ||
-                                  getBridge().getWebView() == null) {
-                                  finish();
-                                  return;
-                              }
-
-                              getBridge().getWebView().evaluateJavascript(
-                                  "(function(){"
-                                  + "if(typeof window.goBack==='function'){"
-                                  + "window.goBack();"
-                                  + "return 'handled';"
-                                  + "}"
-                                  + "if(typeof window.enhancedBack==='function'){"
-                                  + "window.enhancedBack();"
-                                  + "return 'handled';"
-                                  + "}"
-                                  + "return 'exit';"
-                                  + "})()",
-                                  value -> {
-                                      if (value == null ||
-                                          value.contains("exit")) {
-                                          finish();
-                                      }
-                                  }
-                              );
-                          }
-                      }
-                  );
-
-                  if (getBridge() != null &&
-                      getBridge().getWebView() != null) {
-
-                      getBridge().getWebView().addJavascriptInterface(
-                          new AndroidBridge(this),
-                          "Android"
-                      );
-                  }
-              }
-
-              public class AndroidBridge {
-
-                  private final Activity activity;
-
-                  AndroidBridge(Activity activity) {
-                      this.activity = activity;
-                  }
-
-                  @JavascriptInterface
-                  public void exitApp() {
-                      activity.runOnUiThread(() -> activity.finish());
-                  }
-
-                  @JavascriptInterface
-                  public void selectBackupFolder() {
-
-                      activity.runOnUiThread(() -> {
-
-                          Intent intent =
-                              new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-
-                          intent.addFlags(
-                              Intent.FLAG_GRANT_READ_URI_PERMISSION |
-                              Intent.FLAG_GRANT_WRITE_URI_PERMISSION |
-                              Intent.FLAG_GR
+      # ------------------------------------------------
